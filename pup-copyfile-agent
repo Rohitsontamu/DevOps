@@ -1,0 +1,73 @@
+
+# Puppet Module Example: Deploy Script
+
+This guide walks through creating a Puppet module (`myapp`) that deploys a `deploy.sh` script to `/opt` on the agent.
+
+---
+
+## 1. Module Directory Layout
+
+On your Puppet server (in the module path, usually `/etc/puppetlabs/code/environments/production/modules`):
+
+```text
+myapp/
+├── manifests/
+│   └── init.pp
+├── files/
+│   └── deploy.sh
+```
+
+## 2. `files/deploy.sh`
+
+Put your script inside `myapp/files/deploy.sh`. Example:
+
+```bash
+#!/bin/bash
+echo "Hello from Puppet!" > /opt/deploy.log
+```
+
+Make sure it’s executable:
+
+```sh
+chmod +x myapp/files/deploy.sh
+```
+
+## 3. `manifests/init.pp`
+
+Here’s the Puppet manifest that ensures the file gets copied to `/opt` on the agent:
+
+```puppet
+class myapp {
+  file { '/opt/deploy.sh':
+    ensure => file,
+    source => 'puppet:///modules/myapp/deploy.sh',
+    owner  => 'root',
+    group  => 'root',
+    mode   => '0755',
+  }
+}
+```
+
+## 4. Apply the Module
+
+In your `site.pp` (usually at `/etc/puppetlabs/code/environments/production/manifests/site.pp`):
+
+```puppet
+node default {
+  include myapp
+}
+```
+
+---
+
+➡️ Now, every time the Puppet agent runs, it will fetch `deploy.sh` from the module and place it in `/opt/deploy.sh` with the correct permissions.
+
+## 5. How to Apply This on the Agent
+
+To apply the configuration on the Puppet agent, run the following command on the agent machine:
+
+```sh
+/opt/puppetlabs/bin/puppet agent --test --waitforcert=60
+```
+
+This command triggers a Puppet run, which will apply the configuration and deploy the script as defined in your module.
