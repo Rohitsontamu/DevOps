@@ -1,123 +1,70 @@
-# 🛠️ Ansible Setup Guide (Controller + Agents in Docker without Dockerfiles)
 
-## 📌 Prerequisites
-- Docker Desktop (or Docker Engine)
-- Basic Linux knowledge
+# Ansible with Docker: Quick Start Guide
 
----
+This guide demonstrates how to set up an Ansible controller and a managed node using Docker containers, and how to configure them for basic connectivity.
 
-## 1️⃣ Create Network
-All containers must share a network:
-```bash
-docker network create ansible-net
+## 1. Create a Docker Network
+
+```sh
+docker network create ansible_network
 ```
 
----
+## 2. Start the Managed Node Container
 
-## 2️⃣ Start Controller Container
-Run Ubuntu container for controller:
-```bash
-docker run -dit --name ansible-controller --hostname ansible-controller --network ansible-net ubuntu:20.04 bash
+```sh
+docker run -dit --name managed_node --network ansible_network ubuntu:22.04 bash
 ```
 
-Enter the container:
-```bash
-docker exec -it ansible-controller bash
+## 3. Configure the Managed Node
+
+```sh
+docker exec -it managed_node bash
+# Inside the container, run:
+apt update && apt install -y openssh-server sudo nano \
+    && mkdir /var/run/sshd \
+    && echo 'root:root' | chpasswd \
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
+    && service ssh start
 ```
 
-Install Ansible and tools:
-```bash
-apt-get update
-apt-get install -y ansible sshpass nano iputils-ping
+## 4. Start the Ansible Controller Container
+
+```sh
+docker run -dit --name ansible_controller --network ansible_network ubuntu:22.04 bash
 ```
 
----
+## 5. Configure the Ansible Controller
 
-## 3️⃣ Start Agent Containers
-Start two agent containers:
-```bash
-docker run -dit --name ansible-agent1 --hostname ansible-agent1 --network ansible-net ubuntu:20.04 bash
-docker run -dit --name ansible-agent2 --hostname ansible-agent2 --network ansible-net ubuntu:20.04 bash
+```sh
+docker exec -it ansible_controller bash
+# Inside the container, run:
+apt update && apt install -y ansible sshpass
 ```
 
-Enter each agent and configure SSH + Python:
+### Edit Ansible Inventory
 
-```bash
-docker exec -it ansible-agent1 bash
-docker exec -it ansible-agent2 bash
-```
+Edit `/etc/ansible/hosts` and add: If the folder is not preset then use ` mkdir /etc/ansible` to create the folder
 
-Inside each agent:
-```bash
-apt-get update
-apt-get install -y openssh-server python3
-mkdir /var/run/sshd
-echo 'root:rootpassword' | chpasswd
-sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-/etc/init.d/ssh start
-```
-
----
-
-## 4️⃣ Configure Inventory on Controller
-Back in the **controller**:
-```bash
-docker exec -it ansible-controller bash
-nano /etc/ansible/hosts
-```
-
-Add:
 ```ini
 [agents]
-ansible-agent1 ansible_host=ansible-agent1 ansible_user=root ansible_password=rootpassword
-ansible-agent2 ansible_host=ansible-agent2 ansible_user=root ansible_password=rootpassword
+managed_node ansible_user=root ansible_password=root ansible_host=managed_node ansible_connection=ssh
 ```
 
----
+### Disable Host Key Checking
 
-## 5️⃣ Verify Connection
-Inside controller:
-```bash
-ansible -m ping agents
+```sh
+export ANSIBLE_HOST_KEY_CHECKING=False
 ```
 
-Expected result:
-```yaml
-ansible-agent1 | SUCCESS => { "changed": false, "ping": "pong" }
-ansible-agent2 | SUCCESS => { "changed": false, "ping": "pong" }
+Or edit `/etc/ansible/ansible.cfg` and set:
+
+```ini
+[defaults]
+host_key_checking = False
 ```
 
----
+## 6. Test the Connection
 
-## 6️⃣ Run a Test Playbook
-Create **playbook.yml** inside controller:
-```yaml
----
-- name: Install curl on all agents
-  hosts: agents
-  become: yes
-  tasks:
-    - name: Ensure curl is installed
-      apt:
-        name: curl
-        state: present
-        update_cache: yes
+```sh
+ansible agents -m ping
 ```
-
-Run:
-```bash
-ansible-playbook playbook.yml
-```
-
----
-
-## 7️⃣ Cleanup
-Stop and remove containers:
-```bash
-docker rm -f ansible-controller ansible-agent1 ansible-agent2
-docker network rm ansible-net
-```
-
----
-
-✅ You now have a **working Ansible lab** with **one controller and multiple agents** inside Docker — no Dockerfiles needed.
