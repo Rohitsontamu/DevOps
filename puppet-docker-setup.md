@@ -18,14 +18,20 @@ docker network create puppet-net
 Run the Puppet Master with volumes for persistence:
 
 ```powershell
-docker run -dit --name puppet-master `
-  --hostname puppet `
-  --network puppet-net `
-  -p 8140:8140 `
-  -v puppet-server-ssl:/etc/puppetlabs/puppet/ssl `
-  -v puppet-server-data:/opt/puppetlabs/server/data/puppetserver `
-  -v puppet-server-logs:/var/log/puppetlabs/puppetserver `
-  ubuntu:22.04 bash
+docker volume create puppet-master-ssl
+docker volume create puppet-master-logs
+docker volume create puppet-agent-ssl
+docker volume create puppet-agent-logs
+```
+
+```powershell
+docker run -d `
+    --name puppet-master `
+    --hostname puppet `
+    --network puppet-net `
+    -v puppet-master-ssl:/etc/puppetlabs/puppet/ssl `
+    -v puppet-master-logs:/var/log/puppetlabs `
+    ubuntu:22.04 tail -f /dev/null
 ```
 
 ### Inside the container (Puppet Master):
@@ -52,13 +58,12 @@ apt-get install -y puppetserver
 Run the Puppet Agent with its own volumes:
 
 ```powershell
-docker run -dit --name puppet-agent1 `
-  --hostname puppet-agent1 `
-  -p 8140:8140 `
-  --network puppet-net `
-  -v puppet-agent1-ssl:/etc/puppetlabs/puppet/ssl `
-  -v puppet-agent1-logs:/var/log/puppetlabs/puppet `
-  ubuntu:22.04 bash
+docker run -dit --name puppet-agent3 `
+   -h puppet-agent3 `
+   --network puppet-net `
+   -v puppet-agent-ssl:/etc/puppetlabs/puppet/ssl `
+   -p 8081:80 `
+   ubuntu:22.04
 ```
 
 ### Inside the container (Agent):
