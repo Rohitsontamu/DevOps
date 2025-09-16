@@ -1,126 +1,124 @@
-# Puppet Master-Agent Setup in Docker (with Volumes)
+# Puppet Master and Agent Setup in Docker (with Persistent Volumes)
 
-This guide explains how to set up a Puppet Master and Puppet Agents
-inside Docker containers, using **volumes** to persist SSL certificates,
-logs, and configuration files.
+This guide explains how to set up a Puppet Master and multiple Puppet Agents inside Docker containers on **Ubuntu 22.04 base images**, with **persistent volumes** so you don’t lose SSL certificates, logs, or configuration data.
 
-------------------------------------------------------------------------
+---
 
-## 🛠 Prerequisites
+## 1. Create a Docker Network
+We’ll create a dedicated bridge network so the containers can communicate by hostname.
 
--   Windows with **Docker Desktop** installed
--   Basic knowledge of PowerShell and Linux commands
-
-------------------------------------------------------------------------
-
-## 1. Create Docker Volumes
-
-We use Docker volumes to ensure data persists even if containers are
-removed.
-
-``` powershell
-docker volume create puppet-master-ssl
-docker volume create puppet-master-logs
-docker volume create puppet-master-code
-
-docker volume create puppet-agent1-ssl
-docker volume create puppet-agent1-logs
-
-docker volume create puppet-agent2-ssl
-docker volume create puppet-agent2-logs
+```powershell
+docker network create puppet-net
 ```
 
-------------------------------------------------------------------------
+---
 
-## 2. Start Puppet Master Container
+## 2. Start the Puppet Master Container
 
-Run Puppet Master with attached volumes:
+Run the Puppet Master with volumes for persistence:
 
-``` powershell
-docker run -d --name puppet-master `
-  -h puppet `
-  -p 8140:8140 `
-  -v puppet-master-ssl:/etc/puppetlabs/puppet/ssl `
-  -v puppet-master-logs:/var/log/puppetlabs `
-  -v puppet-master-code:/etc/puppetlabs/code `
-  puppet/puppetserver:8.6.1
+```powershell
+docker run -dit --name puppet-master `
+  --hostname puppet `
+  --network puppet-net `
+  -v puppet-server-ssl:/etc/puppetlabs/puppet/ssl `
+  -v puppet-server-data:/opt/puppetlabs/server/data/puppetserver `
+  -v puppet-server-logs:/var/log/puppetlabs/puppetserver `
+  ubuntu:22.04 bash
 ```
 
-Verify the container is running:
+### Inside the container (Puppet Master):
+```bash
+apt-get update
+apt-get install -y wget gnupg lsb-release sudo nano
 
-``` powershell
-docker ps
+# Add Puppet 8 repo
+wget https://apt.puppet.com/puppet8-release-$(lsb_release -cs).deb
+dpkg -i puppet8-release-$(lsb_release -cs).deb
+apt-get update
+
+# Install Puppet Server
+apt-get install -y puppetserver
+
+# Start Puppet Server
+/opt/puppetlabs/bin/puppetserver start
 ```
 
-Inside the container, check service:
+---
 
-``` bash
-docker exec -it puppet-master bash
-/opt/puppetlabs/bin/puppetserver ca list
-```
+## 3. Start a Puppet Agent Container
 
-------------------------------------------------------------------------
+Run the Puppet Agent with its own volumes:
 
-## 3. Start Puppet Agent Containers
-
-### Agent 1
-
-``` powershell
-docker run -d --name puppet-agent1 `
-  -h puppet-agent1 `
-  --link puppet-master `
+```powershell
+docker run -dit --name puppet-agent1 `
+  --hostname puppet-agent1 `
+  --network puppet-net `
   -v puppet-agent1-ssl:/etc/puppetlabs/puppet/ssl `
-  -v puppet-agent1-logs:/var/log/puppetlabs `
-  puppet/puppet-agent:8.6.1 sleep infinity
+  -v puppet-agent1-logs:/var/log/puppetlabs/puppet `
+  ubuntu:22.04 bash
 ```
 
-### Agent 2 (with port mapping for Apache test)
+### Inside the container (Agent):
+```bash
+apt-get update
+apt-get install -y wget gnupg lsb-release sudo nano
 
-``` powershell
-docker run -d --name puppet-agent2 `
-  -h puppet-agent2 `
-  --link puppet-master `
-  -p 8081:80 `
-  -v puppet-agent2-ssl:/etc/puppetlabs/puppet/ssl `
-  -v puppet-agent2-logs:/var/log/puppetlabs `
-  puppet/puppet-agent:8.6.1 sleep infinity
+# Add Puppet 8 repo
+wget https://apt.puppet.com/puppet8-release-$(lsb_release -cs).deb
+dpkg -i puppet8-release-$(lsb_release -cs).deb
+apt-get update
+
+# Install Puppet Agent
+apt-get install -y puppet-agent
+
+# Configure master
+/opt/puppetlabs/bin/puppet config set server puppet --section main
 ```
 
-------------------------------------------------------------------------
+---
 
-## 4. Configure Puppet Agents
+## 4. Certificate Signing
 
-Inside **each agent**:
-
-``` bash
-puppet config set server puppet --section main
+### On the Agent:
+Request a certificate:
+```bash
 puppet agent --test --waitforcert=60
 ```
 
-On **master**, sign certificates if autosigning is disabled:
-
-``` bash
-docker exec -it puppet-master bash
+### On the Master:
+List pending requests:
+```bash
 /opt/puppetlabs/bin/puppetserver ca list
-/opt/puppetlabs/bin/puppetserver ca sign --certname puppet-agent1
-/opt/puppetlabs/bin/puppetserver ca sign --certname puppet-agent2
 ```
 
-------------------------------------------------------------------------
+Sign the agent’s certificate:
+```bash
+/opt/puppetlabs/bin/puppetserver ca sign --certname puppet-agent1
+```
 
-## 5. Write a Simple Puppet Manifest
+---
 
-Create a **site.pp** on the master:
+## 5. Verify Agent Connection
 
-``` bash
-docker exec -it puppet-master bash
+Run the agent again to confirm successful catalog application:
+```bash
+puppet agent --test
+```
+
+---
+
+## 6. Deploy a Simple Manifest (Example: Apache)
+
+### On Master:
+Edit the manifest:
+```bash
 nano /etc/puppetlabs/code/environments/production/manifests/site.pp
 ```
 
-Example manifest (Apache installation for agent2):
-
-``` puppet
-node 'puppet-agent2' {
+Add:
+```puppet
+node 'puppet-agent1' {
   package { 'apache2':
     ensure => installed,
   }
@@ -129,55 +127,47 @@ node 'puppet-agent2' {
     ensure => running,
     enable => true,
   }
-
-  file { '/var/www/html/index.html':
-    ensure  => file,
-    content => "<h1>Hello from Puppet!</h1>",
-  }
-}
-
-node default {
-  notify { 'default-node':
-    message => "This is the default node manifest",
-  }
 }
 ```
 
-------------------------------------------------------------------------
+---
 
-## 6. Apply Manifest from Agent
+## 7. Test on Agent
 
-On **agent2**:
-
-``` bash
-puppet agent --test --waitforcert=60
+On the agent:
+```bash
+puppet agent --test
 ```
 
-Check Apache status:
-
-``` bash
+Verify Apache:
+```bash
 service apache2 status
 ```
 
-Verify in browser (from Windows host):
+---
 
-    http://localhost:8081
+## 8. Persistence
 
-------------------------------------------------------------------------
+- SSL certs are stored in `puppet-server-ssl` and `puppet-agent1-ssl`.
+- Logs are stored in volumes `puppet-server-logs` and `puppet-agent1-logs`.
+- Data is preserved across container restarts.
 
-## 7. Persistency Notes
+---
 
--   Stopping containers with `docker stop` will **not lose data**.\
--   Removing containers with `docker rm` will also **not lose data**
-    since SSL, logs, and code are in Docker volumes.\
--   To inspect volumes:
+## 9. Restarting Containers
 
-``` powershell
-docker volume ls
-docker run --rm -it -v puppet-master-code:/data ubuntu ls /data
+To restart Puppet Master:
+```powershell
+docker restart puppet-master
 ```
 
-------------------------------------------------------------------------
+To restart Agent:
+```powershell
+docker restart puppet-agent1
+```
 
-✅ Now you have a working **Puppet Master-Agent** setup inside Docker,
-with volumes ensuring persistence of logs, SSL certs, and manifests.
+Volumes ensure certificates and configs are **not lost**.
+
+---
+
+✅ You now have a working Puppet Master-Agent setup with Docker, persistent storage, and custom manifests.
