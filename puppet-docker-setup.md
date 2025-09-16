@@ -21,6 +21,7 @@ Run the Puppet Master with volumes for persistence:
 docker run -dit --name puppet-master `
   --hostname puppet `
   --network puppet-net `
+  -p 8140:8140 `
   -v puppet-server-ssl:/etc/puppetlabs/puppet/ssl `
   -v puppet-server-data:/opt/puppetlabs/server/data/puppetserver `
   -v puppet-server-logs:/var/log/puppetlabs/puppetserver `
@@ -53,6 +54,7 @@ Run the Puppet Agent with its own volumes:
 ```powershell
 docker run -dit --name puppet-agent1 `
   --hostname puppet-agent1 `
+  -p 8140:8140 `
   --network puppet-net `
   -v puppet-agent1-ssl:/etc/puppetlabs/puppet/ssl `
   -v puppet-agent1-logs:/var/log/puppetlabs/puppet `
