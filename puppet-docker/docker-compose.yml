@@ -1,0 +1,24 @@
+services:
+  master:
+    build:
+      context: .
+      dockerfile: dockerfile.master
+    hostname: puppet
+    container_name: puppet-master
+    networks:
+      - puppet-network
+
+  agent:
+    build:
+      context: .
+      dockerfile: dockerfile.agent
+    hostname: puppet-agent
+    container_name: puppet-agent
+    depends_on:
+      - master
+    networks:
+      - puppet-network
+
+networks:
+  puppet-network:
+    driver: bridge

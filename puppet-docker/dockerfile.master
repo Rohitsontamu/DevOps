@@ -1,0 +1,24 @@
+FROM ubuntu:22.04
+
+# Update package lists and install basic utilities
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    lsb-release \
+    ca-certificates \
+    sudo \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Puppet repository
+RUN wget https://apt.puppet.com/puppet8-release-$(lsb_release -cs).deb && \
+    dpkg -i puppet8-release-$(lsb_release -cs).deb && \
+    rm puppet8-release-$(lsb_release -cs).deb
+
+# Install Puppet server
+RUN apt-get update && apt-get install -y puppetserver && \
+    rm -rf /var/lib/apt/lists/*
+
+CMD ["/opt/puppetlabs/bin/puppetserver", "foreground"]

@@ -1,0 +1,29 @@
+FROM ubuntu:22.04
+
+# Update package lists and install base utilities, editors, and sudo
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    lsb-release \
+    ca-certificates \
+    sudo \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Puppet repo
+RUN wget https://apt.puppet.com/puppet8-release-$(lsb_release -cs).deb && \
+    dpkg -i puppet8-release-$(lsb_release -cs).deb && \
+    rm puppet8-release-$(lsb_release -cs).deb
+
+# Install Puppet agent
+RUN apt-get update && \
+    apt-get install -y puppet-agent && \
+    rm -rf /var/lib/apt/lists/*
+
+# Configure Puppet agent to use "puppet" as server
+RUN /opt/puppetlabs/bin/puppet config set server puppet --section main
+
+# Run Puppet agent in foreground
+CMD ["tail" , "-f", "/dev/null"]
