@@ -55,7 +55,7 @@ sudo systemctl start puppet
 ```
 
 **Machine :** Both  
-Edit : `/etc/hosts` Using Nano `sudo nano /etc/  hosts`  
+Edit : `/etc/hosts` Using Nano `sudo nano /etc/hosts`  
 **Add Following**
 ```txt
 <Private-IP-Master> puppet
@@ -83,4 +83,5 @@ sudo /opt/puppetlabs/bin/puppetserver ca sign --all
 **Machine :** Agent
 ```sh
 sudo /opt/puppetlabs/bin/puppet agent -t
+
 ```
